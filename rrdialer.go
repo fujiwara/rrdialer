@@ -95,7 +95,6 @@ type Dialer struct {
 
 type Option struct {
 	EjectThreshold int
-	EjectTimeout   time.Duration
 	CheckInterval  time.Duration
 	CheckTimeout   time.Duration
 	Logger         Logger
@@ -105,7 +104,6 @@ type Option struct {
 func NewOption() *Option {
 	return &Option{
 		EjectThreshold: DefaultEjectThreshold,
-		EjectTimeout:   DefaultEjectTimeout,
 		CheckInterval:  DefaultCheckInterval,
 		CheckTimeout:   DefaultCheckTimeout,
 	}
@@ -126,7 +124,6 @@ func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 			checkInterval:  opt.CheckInterval,
 			checkTimeout:   opt.CheckTimeout,
 			ejectThreshold: opt.EjectThreshold,
-			ejectTimeout:   opt.EjectTimeout,
 		}
 		if t.check != nil {
 			go t.runChecker(ctx)

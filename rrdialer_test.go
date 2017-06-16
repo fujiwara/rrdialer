@@ -107,7 +107,6 @@ func TestConnectEject(t *testing.T) {
 	m := regexp.MustCompile(`^hello \d+`)
 	opt := rrdialer.NewOption()
 	opt.Logger = log.New(os.Stderr, "", log.Ldate)
-	opt.EjectTimeout = 3 * time.Second
 	opt.EjectThreshold = 2
 	opt.CheckInterval = 1 * time.Second
 
@@ -154,7 +153,6 @@ func TestConnectCheck(t *testing.T) {
 
 	opt := rrdialer.NewOption()
 	opt.Logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
-	opt.EjectTimeout = 3 * time.Second
 	opt.EjectThreshold = 2
 	opt.CheckInterval = 1 * time.Second
 	opt.CheckFunc = rrdialer.NewTCPCheckFunc()
