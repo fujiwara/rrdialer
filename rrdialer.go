@@ -26,7 +26,7 @@ type upstream struct {
 	address        string
 	check          CheckFunc
 	logger         Logger
-	locker         *Locker
+	locker         *locker
 	ejectThreshold int
 	checkInterval  time.Duration
 	checkTimeout   time.Duration
