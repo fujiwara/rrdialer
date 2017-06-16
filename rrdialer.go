@@ -57,6 +57,10 @@ func (u *upstream) doCheck(ctx context.Context) {
 		default:
 		}
 		u.failed++
+		if u.locker.IsLocked() {
+			// still failing. silent return
+			return
+		}
 		u.Printf("upstream %s check failed: %s", u.address, err)
 		if u.failed >= u.ejectThreshold {
 			u.Printf("upstream %s ejected. %d times failed", u.address, u.failed)
@@ -79,9 +83,7 @@ func (u *upstream) runChecker(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		if !u.locker.IsLocked() {
-			u.doCheck(ctx)
-		}
+		u.doCheck(ctx)
 	}
 }
 
