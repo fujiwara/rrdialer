@@ -15,17 +15,18 @@ const (
 	DefaultCheckTimeout   = 5 * time.Second
 )
 
+// Logger is an interface for rrdialer
 type Logger interface {
 	Println(v ...interface{})
 	Printf(format string, v ...interface{})
 }
 
-type Checker func(ctx context.Context, addr string) error
+type CheckFunc func(ctx context.Context, addr string) error
 
 type target struct {
 	address        string
 	locker         *Locker
-	check          Checker
+	check          CheckFunc
 	logger         Logger
 	ejectThreshold int
 	ejectTimeout   time.Duration
@@ -97,7 +98,7 @@ type Option struct {
 	CheckInterval  time.Duration
 	CheckTimeout   time.Duration
 	Logger         Logger
-	Checker        Checker
+	CheckFunc      CheckFunc
 }
 
 func NewOption() *Option {
@@ -109,12 +110,8 @@ func NewOption() *Option {
 	}
 }
 
-func NewDialer(address []string, opt *Option) *Dialer {
-	ctx := context.Background()
-	return NewDialerWithContext(ctx, address, opt)
-}
-
-func NewDialerWithContext(ctx context.Context, address []string, opt *Option) *Dialer {
+// NewDialer makes a Dialer.
+func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 	if opt == nil {
 		opt = NewOption()
 	}
@@ -124,7 +121,7 @@ func NewDialerWithContext(ctx context.Context, address []string, opt *Option) *D
 			address:        addr,
 			locker:         NewLocker(),
 			logger:         opt.Logger,
-			check:          opt.Checker,
+			check:          opt.CheckFunc,
 			checkInterval:  opt.CheckInterval,
 			checkTimeout:   opt.CheckTimeout,
 			ejectThreshold: opt.EjectThreshold,
@@ -157,6 +154,7 @@ func (d *Dialer) pick() (*target, error) {
 	return targets[index%uint32(len(targets))], nil
 }
 
+// Get gets an available address from Dialer.
 func (d *Dialer) Get() (string, error) {
 	t, err := d.pick()
 	if err != nil {
@@ -165,11 +163,13 @@ func (d *Dialer) Get() (string, error) {
 	return t.address, nil
 }
 
+// Dial dials to a available address from Dialer via network.
 func (d *Dialer) Dial(network string) (net.Conn, error) {
 	ctx := context.Background()
 	return d.DialContext(ctx, network)
 }
 
+// DialContext dials to a available address from Dialer via network with context.
 func (d *Dialer) DialContext(ctx context.Context, network string) (net.Conn, error) {
 	addr, err := d.Get()
 	if err != nil {
@@ -179,6 +179,7 @@ func (d *Dialer) DialContext(ctx context.Context, network string) (net.Conn, err
 	return da.DialContext(ctx, network, addr)
 }
 
+// DialContext dials to a available address from Dialer via network with timeout.
 func (d *Dialer) DialTimeout(network string, timeout time.Duration) (net.Conn, error) {
 	addr, err := d.Get()
 	if err != nil {

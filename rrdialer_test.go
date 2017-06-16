@@ -1,6 +1,7 @@
 package rrdialer_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestResolve(t *testing.T) {
-	d := rrdialer.NewDialer([]string{"localhost:80", "www.example.com:80"}, nil)
+	d := rrdialer.NewDialer(context.Background(), []string{"localhost:80", "www.example.com:80"}, nil)
 	for i := 0; i < 10; i++ {
 		address, err := d.Get()
 		if err != nil {
@@ -42,7 +43,7 @@ func TestConnectSingle(t *testing.T) {
 	go testServer(0, 9999, ch)
 	addr := <-ch
 	t.Logf("addr: %s", addr)
-	d := rrdialer.NewDialer([]string{addr}, nil)
+	d := rrdialer.NewDialer(context.Background(), []string{addr}, nil)
 	a, _ := d.Get()
 	conn, err := net.Dial("tcp", a)
 	if err != nil {
@@ -72,7 +73,7 @@ func TestConnectMulti(t *testing.T) {
 	t.Logf("addrs: %s", addrs)
 
 	m := regexp.MustCompile(`^hello \d+`)
-	d := rrdialer.NewDialer(addrs, nil)
+	d := rrdialer.NewDialer(context.Background(), addrs, nil)
 
 	for i := 0; i < 16; i++ {
 		addr, _ := d.Get()
@@ -113,7 +114,7 @@ func TestConnectEject(t *testing.T) {
 	t.Logf("%#v", opt)
 	return
 
-	d := rrdialer.NewDialer(addrs, opt)
+	d := rrdialer.NewDialer(context.Background(), addrs, opt)
 	for i := 0; i < 16; i++ {
 		conn, err := d.Dial("tcp")
 		if err != nil {
@@ -150,18 +151,15 @@ func TestConnectCheck(t *testing.T) {
 	t.Logf("addrs: %s", addrs)
 
 	m := regexp.MustCompile(`^hello \d+`)
-	checker, err := rrdialer.NewTCPChecker()
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	opt := rrdialer.NewOption()
 	opt.Logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
 	opt.EjectTimeout = 3 * time.Second
 	opt.EjectThreshold = 2
 	opt.CheckInterval = 1 * time.Second
-	opt.Checker = checker
+	opt.CheckFunc = rrdialer.NewTCPCheckFunc()
 
-	d := rrdialer.NewDialer(addrs, opt)
+	d := rrdialer.NewDialer(context.Background(), addrs, opt)
 	for i := 0; i < 16; i++ {
 		addr, _ := d.Get()
 		conn, err := net.Dial("tcp", addr)
