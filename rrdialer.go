@@ -10,7 +10,6 @@ import (
 
 const (
 	DefaultEjectThreshold = 2
-	DefaultEjectTimeout   = 10 * time.Second
 	DefaultCheckInterval  = 5 * time.Second
 	DefaultCheckTimeout   = 5 * time.Second
 )
@@ -23,34 +22,33 @@ type Logger interface {
 
 type CheckFunc func(ctx context.Context, addr string) error
 
-type target struct {
+type upstream struct {
 	address        string
-	locker         *Locker
 	check          CheckFunc
 	logger         Logger
+	locker         *Locker
 	ejectThreshold int
-	ejectTimeout   time.Duration
 	checkInterval  time.Duration
 	checkTimeout   time.Duration
 	failed         int
 }
 
-func (t *target) Println(v ...interface{}) {
-	if t.logger != nil {
-		t.logger.Println(v...)
+func (u *upstream) Println(v ...interface{}) {
+	if u.logger != nil {
+		u.logger.Println(v...)
 	}
 }
 
-func (t *target) Printf(format string, v ...interface{}) {
-	if t.logger != nil {
-		t.logger.Printf(format, v...)
+func (u *upstream) Printf(format string, v ...interface{}) {
+	if u.logger != nil {
+		u.logger.Printf(format, v...)
 	}
 }
 
-func (t *target) doCheck(ctx context.Context) {
-	checkCtx, cancel := context.WithTimeout(ctx, t.checkTimeout)
+func (u *upstream) doCheck(ctx context.Context) {
+	checkCtx, cancel := context.WithTimeout(ctx, u.checkTimeout)
 	defer cancel()
-	err := t.check(checkCtx, t.address)
+	err := u.check(checkCtx, u.address)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -58,39 +56,39 @@ func (t *target) doCheck(ctx context.Context) {
 			return
 		default:
 		}
-		t.failed++
-		t.Printf("check failed for %s: %s", t.address, err)
-		if t.failed >= t.ejectThreshold {
-			t.Printf("%s will be ejected until %s", t.address, time.Now().Add(t.ejectTimeout))
-			t.locker.Lock()
+		u.failed++
+		u.Printf("upstream %s check failed: %s", u.address, err)
+		if u.failed >= u.ejectThreshold {
+			u.Printf("upstream %s ejected. %d times failed", u.address, u.failed)
+			u.locker.Lock()
 		}
-	} else if t.failed > 0 {
-		t.Printf("check recovered for %s", t.address)
-		t.failed = 0
-		t.locker.Unlock()
+	} else if u.failed > 0 {
+		u.Printf("upstream %s check recovered", u.address)
+		u.failed = 0
+		u.locker.Unlock()
 	}
 }
 
-func (t *target) runChecker(ctx context.Context) {
-	ticker := time.NewTicker(t.checkInterval)
+func (u *upstream) runChecker(ctx context.Context) {
+	ticker := time.NewTicker(u.checkInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			t.Printf("shutdown checker for %s", t.address)
+			u.Printf("shutdown checker for upstream %s", u.address)
 			return
 		case <-ticker.C:
 		}
-		if !t.locker.IsLocked() {
-			t.doCheck(ctx)
+		if !u.locker.IsLocked() {
+			u.doCheck(ctx)
 		}
 	}
 }
 
 type Dialer struct {
-	targets []*target
-	index   uint32
-	logger  Logger
+	upstreams []*upstream
+	index     uint32
+	logger    Logger
 }
 
 type Option struct {
@@ -114,9 +112,9 @@ func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 	if opt == nil {
 		opt = NewOption()
 	}
-	targets := make([]*target, 0)
+	upstreams := make([]*upstream, 0, len(address))
 	for _, addr := range address {
-		t := &target{
+		u := &upstream{
 			address:        addr,
 			locker:         NewLocker(),
 			logger:         opt.Logger,
@@ -125,40 +123,38 @@ func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 			checkTimeout:   opt.CheckTimeout,
 			ejectThreshold: opt.EjectThreshold,
 		}
-		if t.check != nil {
-			go t.runChecker(ctx)
+		if u.check != nil {
+			go u.runChecker(ctx)
 		}
-		targets = append(targets, t)
+		upstreams = append(upstreams, u)
 	}
 	return &Dialer{
-		targets: targets,
-		index:   0,
-		logger:  opt.Logger,
+		upstreams: upstreams,
+		index:     0,
+		logger:    opt.Logger,
 	}
 }
 
-func (d *Dialer) pick() (*target, error) {
+func (d *Dialer) pick() (*upstream, error) {
 	index := atomic.AddUint32(&(d.index), 1)
-	targets := make([]*target, 0)
-	for _, t := range d.targets {
-		if t.locker.IsLocked() {
+	n := uint32(len(d.upstreams))
+	for i := index; i < index+n; i++ {
+		u := d.upstreams[i%n]
+		if u.locker.IsLocked() {
 			continue
 		}
-		targets = append(targets, t)
+		return u, nil
 	}
-	if len(targets) == 0 {
-		return nil, errors.New("all addresses are unavailable now")
-	}
-	return targets[index%uint32(len(targets))], nil
+	return nil, errors.New("all addresses are unavailable now")
 }
 
 // Get gets an available address from Dialer.
 func (d *Dialer) Get() (string, error) {
-	t, err := d.pick()
+	u, err := d.pick()
 	if err != nil {
 		return "", err
 	}
-	return t.address, nil
+	return u.address, nil
 }
 
 // Dial dials to a available address from Dialer via network.
