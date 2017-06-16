@@ -99,6 +99,7 @@ type Option struct {
 	CheckFunc      CheckFunc
 }
 
+// NewOption makes Option with default values.
 func NewOption() *Option {
 	return &Option{
 		EjectThreshold: DefaultEjectThreshold,
@@ -148,7 +149,7 @@ func (d *Dialer) pick() (*upstream, error) {
 	return nil, errors.New("all addresses are unavailable now")
 }
 
-// Get gets an available address from Dialer.
+// Get gets an available address in Dialer.
 func (d *Dialer) Get() (string, error) {
 	u, err := d.pick()
 	if err != nil {
@@ -157,13 +158,13 @@ func (d *Dialer) Get() (string, error) {
 	return u.address, nil
 }
 
-// Dial dials to a available address from Dialer via network.
+// Dial dials to an available address in Dialer via network.
 func (d *Dialer) Dial(network string) (net.Conn, error) {
 	ctx := context.Background()
 	return d.DialContext(ctx, network)
 }
 
-// DialContext dials to a available address from Dialer via network with context.
+// DialContext dials to an available address in Dialer via network with context.
 func (d *Dialer) DialContext(ctx context.Context, network string) (net.Conn, error) {
 	addr, err := d.Get()
 	if err != nil {
@@ -173,7 +174,7 @@ func (d *Dialer) DialContext(ctx context.Context, network string) (net.Conn, err
 	return da.DialContext(ctx, network, addr)
 }
 
-// DialContext dials to a available address from Dialer via network with timeout.
+// DialContext dials to an available address in Dialer via network with timeout.
 func (d *Dialer) DialTimeout(network string, timeout time.Duration) (net.Conn, error) {
 	addr, err := d.Get()
 	if err != nil {
