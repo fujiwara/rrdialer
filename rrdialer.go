@@ -96,12 +96,12 @@ type Dialer struct {
 }
 
 type Option struct {
-	EjectThreshold int
-	CheckInterval  time.Duration
-	CheckTimeout   time.Duration
+	EjectThreshold int           // When health check failed count reached EjectThreshold, upstream will be ejected until pass health check
+	CheckInterval  time.Duration // health check interval
+	CheckTimeout   time.Duration // health check timeout
 	Logger         Logger
 	CheckFunc      CheckFunc
-	NextUpstream   bool
+	NextUpstream   bool // Try next upstream when dial failed
 }
 
 // NewOption makes Option with default values.
