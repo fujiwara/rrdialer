@@ -31,35 +31,37 @@ conn, err := da.Dial("tcp") // connect to host1:8888 or host2:8888
 [go-sql-driver/mysql](https://godoc.org/github.com/go-sql-driver/mysql) has an interface to customize dialer.
 
 ```go
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
-
+// upstream addresses
 addrs := []string{"slave1:3306", "slave2:3307"},
-checkerDSN := "test:test@tcp(dummy)/test" // health checker uses "tcp" as usual
+
+// health checker
 opt := rrdialer.NewOption()
-opt.CheckFunc = rrdialer.NewMySQLCheckFunc(checkerDSN)
+// health checker uses "tcp" as usual
+opt.CheckFunc = rrdialer.NewMySQLCheckFunc("test:test@tcp(dummy)/test")
+
 da := rrdialer.NewDialer(ctx, addrs, opt)
 
-// register network "roundrobin" for rrdialer
+// register a custom network "roundrobin" for rrdialer into mysql
+dsn := "test:test@roundrobin(dummy)/test"
+cfg, _ := mysql.ParseDSN(dsn)
 mysql.RegisterDial("roundrobin",
 	func(_ string) (net.Conn, error) {
-		return da.DialTimeout("tcp", 5*time.Second)
+		return da.DialTimeout("tcp", cfg.Timeout)
 	},
 )
 
-// to use rrdailer, specify a registerd network "roundrobin".
-db, _ := sql.Open("mysql", "test:test@roundrobin(dummy)/test")
+// connect via rrdialer
+db, _ := sql.Open("mysql", dsn)
 ```
 
 ### Example for TCP
 
 ```go
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
-
 addrs := []string{"host1:8888", "host2:8888"},
+
 opt := rrdialer.NewOption()
 opt.CheckFunc = rrdialer.NewTCPCheckFunc()
+
 da := rrdialer.NewDialer(ctx, addrs, opt)
 conn, err := da.Dial("tcp")
 ```
@@ -67,11 +69,14 @@ conn, err := da.Dial("tcp")
 ### Example for HTTP health check
 
 ```go
+addrs := []string{"backend1:80", "backend2:80"}
+
 checkReq, _ := http.NewRequest("GET", "http://example.com/ping", nil)
 opt := rrdialer.NewOption()
 opt.CheckFunc = rrdialer.NewHTTPCheckFunc(checkReq)
 
-da := rrdialer.NewDialer(ctx, []string{"backend1:80", "backend2:80"}, opt)
+da := rrdialer.NewDialer(ctx, addrs, opt)
+
 client := &http.Client{
 	Transport: &http.Transport{
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -82,6 +87,8 @@ client := &http.Client{
 		},
 	},
 }
+
+// client connects to a server via rrdialer
 res, err := client.Get("http://example.com/foo/bar")
 ```
 
