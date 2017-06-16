@@ -62,11 +62,12 @@ func (t *target) doCheck(ctx context.Context) {
 		t.Printf("check failed for %s: %s", t.address, err)
 		if t.failed >= t.ejectThreshold {
 			t.Printf("%s will be ejected until %s", t.address, time.Now().Add(t.ejectTimeout))
-			t.locker.Lock(t.ejectTimeout)
+			t.locker.Lock()
 		}
 	} else if t.failed > 0 {
 		t.Printf("check recovered for %s", t.address)
 		t.failed = 0
+		t.locker.Unlock()
 	}
 }
 

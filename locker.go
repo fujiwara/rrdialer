@@ -1,29 +1,31 @@
 package rrdialer
 
-import (
-	"time"
-)
-
 type Locker struct {
-	expire chan (interface{})
+	expire chan (struct{})
 }
 
 func NewLocker() *Locker {
 	return &Locker{
-		expire: make(chan interface{}, 1),
+		expire: make(chan struct{}, 1),
 	}
 }
 
-func (l *Locker) Lock(d time.Duration) bool {
+func (l *Locker) Lock() bool {
 	select {
-	case l.expire <- nil:
-		time.AfterFunc(d, func() {
-			<-l.expire
-		})
+	case l.expire <- struct{}{}:
 		return true
 	default:
+		return false
 	}
-	return false
+}
+
+func (l *Locker) Unlock() bool {
+	select {
+	case <-l.expire:
+		return true
+	default:
+		return false
+	}
 }
 
 func (l *Locker) IsLocked() bool {
