@@ -1,6 +1,8 @@
 package rrdialer
 
-import "time"
+import (
+	"time"
+)
 
 type Locker struct {
 	expire chan (interface{})
@@ -25,5 +27,5 @@ func (l *Locker) Lock(d time.Duration) bool {
 }
 
 func (l *Locker) IsLocked() bool {
-	return len(l.expire) == 1
+	return len(l.expire) > 0
 }

@@ -1,4 +1,4 @@
-package rrdialer
+package rrdialer_test
 
 import (
 	"fmt"
@@ -9,16 +9,18 @@ import (
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/fujiwara/rrdialer"
 )
 
 func TestResolve(t *testing.T) {
-	d := NewDialer("localhost:80", "www.example.com:80")
+	d := rrdialer.NewDialer([]string{"localhost:80", "www.example.com:80"}, nil)
 	for i := 0; i < 10; i++ {
-		ta, err := d.pick()
+		address, err := d.Get()
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%s", ta.address)
+		t.Logf("%s", address)
 	}
 }
 
@@ -40,8 +42,9 @@ func TestConnectSingle(t *testing.T) {
 	go testServer(0, 9999, ch)
 	addr := <-ch
 	t.Logf("addr: %s", addr)
-	d := NewDialer(addr)
-	conn, err := d.Dial("tcp")
+	d := rrdialer.NewDialer([]string{addr}, nil)
+	a, _ := d.Get()
+	conn, err := net.Dial("tcp", a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +72,11 @@ func TestConnectMulti(t *testing.T) {
 	t.Logf("addrs: %s", addrs)
 
 	m := regexp.MustCompile(`^hello \d+`)
-	d := NewDialer(addrs...)
+	d := rrdialer.NewDialer(addrs, nil)
 
 	for i := 0; i < 16; i++ {
-		conn, err := d.Dial("tcp")
-		t.Log("connected", conn.RemoteAddr())
+		addr, _ := d.Get()
+		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,15 +104,76 @@ func TestConnectEject(t *testing.T) {
 	t.Logf("addrs: %s", addrs)
 
 	m := regexp.MustCompile(`^hello \d+`)
-	d := NewDialer(addrs...)
-	d.Logger = log.New(os.Stderr, "", 0)
+	opt := rrdialer.NewOption()
+	opt.Logger = log.New(os.Stderr, "", log.Ldate)
+	opt.EjectTimeout = 3 * time.Second
+	opt.EjectThreshold = 2
+	opt.CheckInterval = 1 * time.Second
 
+	t.Logf("%#v", opt)
+	return
+
+	d := rrdialer.NewDialer(addrs, opt)
 	for i := 0; i < 16; i++ {
 		conn, err := d.Dial("tcp")
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log("connected", conn.RemoteAddr())
+		b, err := ioutil.ReadAll(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i < 4 {
+			if !m.Match(b) {
+				t.Errorf("unexpected response: %s", b)
+			}
+		} else {
+			if string(b) != "hello 1" {
+				t.Errorf("unexpected response: %s", b)
+			}
+		}
+		t.Logf("response: %s", b)
+		conn.Close()
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+func TestConnectCheck(t *testing.T) {
+	ch := make(chan string)
+	addrs := make([]string, 0)
+	go testServer(0, 2, ch)
+	go testServer(1, 9999, ch)
+	for i := 0; i < 2; i++ {
+		addr := <-ch
+		addrs = append(addrs, addr)
+	}
+	t.Logf("addrs: %s", addrs)
+
+	m := regexp.MustCompile(`^hello \d+`)
+	checker, err := rrdialer.NewTCPChecker()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := rrdialer.NewOption()
+	opt.Logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+	opt.EjectTimeout = 3 * time.Second
+	opt.EjectThreshold = 2
+	opt.CheckInterval = 1 * time.Second
+	opt.Checker = checker
+
+	d := rrdialer.NewDialer(addrs, opt)
+	for i := 0; i < 16; i++ {
+		addr, _ := d.Get()
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			// refetch
+			addr, _ = d.Get()
+			conn, err = net.Dial("tcp", addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		b, err := ioutil.ReadAll(conn)
 		if err != nil {
 			t.Fatal(err)
