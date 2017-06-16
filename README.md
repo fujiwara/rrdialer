@@ -59,7 +59,7 @@ defer cancel()
 
 addrs := []string{"host1:8888", "host2:8888"},
 opt := rrdialer.NewOption()
-opt.Checker = rrdialer.NewTCPCheckFunc()
+opt.CheckFunc = rrdialer.NewTCPCheckFunc()
 da := rrdialer.NewDialer(ctx, addrs, opt)
 conn, err := da.Dial("tcp")
 ```
