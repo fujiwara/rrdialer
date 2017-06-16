@@ -4,7 +4,7 @@ type locker struct {
 	expire chan (struct{})
 }
 
-func NewLocker() *locker {
+func newLocker() *locker {
 	return &locker{
 		expire: make(chan struct{}, 1),
 	}

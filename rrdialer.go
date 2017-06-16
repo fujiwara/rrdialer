@@ -116,7 +116,7 @@ func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 	for _, addr := range address {
 		u := &upstream{
 			address:        addr,
-			locker:         NewLocker(),
+			locker:         newLocker(),
 			logger:         opt.Logger,
 			check:          opt.CheckFunc,
 			checkInterval:  opt.CheckInterval,
