@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	DefaultEjectThreshold = 2
-	DefaultCheckInterval  = 5 * time.Second
-	DefaultCheckTimeout   = 5 * time.Second
+	DefaultEjectThreshold   = 2
+	DefaultRecoverThreshold = 2
+	DefaultCheckInterval    = 5 * time.Second
+	DefaultCheckTimeout     = 5 * time.Second
 )
 
 var (
@@ -36,14 +37,16 @@ func (l nullLogger) Printf(_ string, v ...interface{}) {
 type CheckFunc func(ctx context.Context, addr string) error
 
 type upstream struct {
-	address        string
-	check          CheckFunc
-	logger         Logger
-	locker         *locker
-	ejectThreshold int
-	checkInterval  time.Duration
-	checkTimeout   time.Duration
-	failed         int
+	address          string
+	check            CheckFunc
+	logger           Logger
+	locker           *locker
+	ejectThreshold   int
+	recoverThreshold int
+	checkInterval    time.Duration
+	checkTimeout     time.Duration
+	failed           int
+	succeeded        int
 }
 
 func (u *upstream) doCheck(ctx context.Context) {
@@ -58,19 +61,23 @@ func (u *upstream) doCheck(ctx context.Context) {
 		default:
 		}
 		u.failed++
+		u.succeeded = 0
 		if u.locker.IsLocked() {
 			// still failing. silent return
 			return
 		}
 		u.logger.Printf("upstream %s check failed: %s", u.address, err)
 		if u.failed >= u.ejectThreshold {
-			u.logger.Printf("upstream %s ejected. %d times failed", u.address, u.failed)
+			u.logger.Printf("upstream %s ejected. marked as DOWN. %d times failed", u.address, u.failed)
 			u.locker.Lock()
 		}
-	} else if u.failed > 0 {
-		u.logger.Printf("upstream %s check recovered", u.address)
-		u.failed = 0
-		u.locker.Unlock()
+	} else {
+		u.succeeded++
+		if u.locker.IsLocked() && u.succeeded >= u.recoverThreshold {
+			u.failed = 0
+			u.logger.Printf("upstream %s recovered. marked as ALIVE", u.address)
+			u.locker.Unlock()
+		}
 	}
 }
 
@@ -96,12 +103,13 @@ type Dialer struct {
 }
 
 type Option struct {
-	EjectThreshold int           // When health check failed count reached EjectThreshold, upstream will be ejected until pass health check
-	CheckInterval  time.Duration // health check interval
-	CheckTimeout   time.Duration // health check timeout
-	Logger         Logger
-	CheckFunc      CheckFunc
-	NextUpstream   bool // Try next upstream when dial failed
+	EjectThreshold   int           // When health check failed count reached EjectThreshold, upstream is marked as down until pass health check
+	RecoverThreshold int           // When health check succeeded count reached RecoverThreshold, upstream is marked as alive
+	CheckInterval    time.Duration // health check interval
+	CheckTimeout     time.Duration // health check timeout
+	Logger           Logger
+	CheckFunc        CheckFunc
+	NextUpstream     bool // Try next upstream when dial failed
 }
 
 // NewOption makes Option with default values.
@@ -113,6 +121,9 @@ func NewOption() *Option {
 func (opt *Option) setDefault() *Option {
 	if opt.EjectThreshold == 0 {
 		opt.EjectThreshold = DefaultEjectThreshold
+	}
+	if opt.RecoverThreshold == 0 {
+		opt.RecoverThreshold = DefaultRecoverThreshold
 	}
 	if opt.CheckInterval == 0 {
 		opt.CheckInterval = DefaultCheckInterval
@@ -136,13 +147,14 @@ func NewDialer(ctx context.Context, address []string, opt *Option) *Dialer {
 	upstreams := make([]*upstream, 0, len(address))
 	for _, addr := range address {
 		u := &upstream{
-			address:        addr,
-			locker:         newLocker(),
-			logger:         opt.Logger,
-			check:          opt.CheckFunc,
-			checkInterval:  opt.CheckInterval,
-			checkTimeout:   opt.CheckTimeout,
-			ejectThreshold: opt.EjectThreshold,
+			address:          addr,
+			locker:           newLocker(),
+			logger:           opt.Logger,
+			check:            opt.CheckFunc,
+			checkInterval:    opt.CheckInterval,
+			checkTimeout:     opt.CheckTimeout,
+			ejectThreshold:   opt.EjectThreshold,
+			recoverThreshold: opt.RecoverThreshold,
 		}
 		if u.check != nil {
 			go u.runChecker(ctx)
